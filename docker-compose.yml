@@ -1,0 +1,78 @@
+services:
+  postgres-digitaltwin:
+    image: postgres:16-alpine
+    container_name: postgres_digitaltwin_db
+    restart: always
+    environment:
+      POSTGRES_DB: digitaltwin_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      TZ: America/Santiago
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d digitaltwin_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama-service:
+    image: ollama/ollama:latest
+    container_name: ollama_digitaltwin_service
+    restart: always
+    environment:
+      OLLAMA_TLS_NO_VERIFY: "1"
+      OLLAMA_INSECURE: "true"
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nl2sql-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: nl2sql_api_service
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres-digitaltwin
+      DB_PORT: "5432"
+      DB_NAME: digitaltwin_db
+      DB_USER: postgres
+      DB_PASS: postgres_password
+      OLLAMA_HOST: http://ollama-service:11434
+      LLM_MODEL: "minimax-m3:latest"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres-digitaltwin:
+        condition: service_healthy
+      ollama-service:
+        condition: service_healthy
+
+  frontend-ui:
+    build:
+      context: ./propuesta/propuestafuncionalfront
+      dockerfile: Dockerfile.frontend
+    container_name: frontend_digitaltwin_ui
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - nl2sql-api
+
+volumes:
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
