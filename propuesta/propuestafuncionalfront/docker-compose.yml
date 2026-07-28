@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. BASE DE DATOS POSTGRESQL CON PERSISTENCIA Y SCHEMA INICIAL
+  # ----------------------------------------------------------------------------
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: digital_twin_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: helpdesk_db
+      POSTGRES_USER: bps_admin
+      POSTGRES_PASSWORD: bps_secure_password_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bps_admin -d helpdesk_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # 2. MOTOR OLLAMA LLM (DOCKER) CON MODELO LLAMA3 / MISTRAL
+  # ----------------------------------------------------------------------------
+  ollama_service:
+    image: ollama/ollama:latest
+    container_name: digital_twin_ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+    # Inicializa y descarga automáticamente el modelo Llama3 si no existe
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull llama3 && tail -f /dev/null"]
+
+  # ----------------------------------------------------------------------------
+  # 3. BACKEND PYTHON (FASTAPI + SIMULACIÓN + AGENTE TEXT-TO-SQL)
+  # ----------------------------------------------------------------------------
+  python_backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: digital_twin_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://bps_admin:bps_secure_password_2026@postgres_db:5432/helpdesk_db
+      OLLAMA_URL: http://ollama_service:11434/api/generate
+      OLLAMA_MODEL: llama3
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      ollama_service:
+        condition: service_started
+
+  # ----------------------------------------------------------------------------
+  # 4. FRONTEND ANGULAR / REACT WEB DASHBOARD (NGINX / VITE)
+  # ----------------------------------------------------------------------------
+  web_frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: digital_twin_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - python_backend
+
+volumes:
+  postgres_data:
+  ollama_storage:

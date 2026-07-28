@@ -1,0 +1,6 @@
+{
+  "name": "Digital Twin Operacional - Mesa de Ayuda",
+  "description": "Gemelo Digital Operacional para Mesa de Ayuda con simulación de eventos discretos, analítica de SLA y asistente IA Text-to-SQL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
